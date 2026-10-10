@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    container_name: lottery-backend
+    environment:
+      - DATABASE_URL=sqlite:///./data/lottery.db
+      - CHECKIN_BASE_URL=http://localhost/checkin
+    volumes:
+      - ./backend/data:/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: lottery-frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    restart: unless-stopped
