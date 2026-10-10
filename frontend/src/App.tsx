@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AdminLayout from './components/AdminLayout'
 import EventListPage from './pages/events/EventListPage'
 import EventDetailPage from './pages/events/EventDetailPage'
@@ -8,7 +8,7 @@ import DashboardPage from './pages/dashboard/DashboardPage'
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         {/* 手机签到页（无需后台布局） */}
         <Route path="/checkin/:token" element={<CheckinPage />} />
@@ -26,6 +26,6 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/events" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   )
 }

@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { eventApi } from '@/api'
 import { extractError } from '@/api/http'
+import { openLotteryScreen } from '@/utils/openLottery'
 import type { EventCreatePayload, EventItem, EventStatus } from '@/types'
 
 const STATUS_META: Record<EventStatus, { text: string; color: string }> = {
@@ -148,7 +149,7 @@ export default function EventListPage() {
                 </Button>
                 <Button
                   size="small"
-                  onClick={() => window.open(`/lottery/${record.id}`, '_blank')}
+                  onClick={() => void openLotteryScreen(record.id)}
                 >
                   大屏
                 </Button>

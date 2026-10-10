@@ -1,10 +1,26 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'node:path'
 
+/** 去掉 Vite 在 <script> / <link> 上加的 crossorigin 属性。
+ *  tauri:// 协议下 WebView2 会对 crossorigin 资源做 CORS 检查，
+ *  但本地应用协议没有 CORS 头，导致新窗口白屏。 */
+function stripCrossorigin(): Plugin {
+  return {
+    name: 'strip-crossorigin',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        return html.replace(/\s+crossorigin(="")?/g, '')
+      },
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), stripCrossorigin()],
+  base: './',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

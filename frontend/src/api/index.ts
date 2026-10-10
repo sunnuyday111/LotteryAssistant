@@ -1,6 +1,6 @@
 /** 后端 API 封装。 */
 
-import { http } from './http'
+import { asArray, http } from './http'
 import type {
   CheckinEventInfo,
   CheckinResult,
@@ -18,7 +18,8 @@ import type {
 
 // ---------- 活动 ----------
 export const eventApi = {
-  list: () => http.get<EventItem[]>('/api/events').then((r) => r.data),
+  list: () =>
+    http.get<EventItem[]>('/api/events').then((r) => asArray<EventItem>(r.data)),
   get: (id: number) =>
     http.get<EventDetail>(`/api/events/${id}`).then((r) => r.data),
   create: (data: EventCreatePayload) =>
@@ -38,7 +39,7 @@ export const participantApi = {
   list: (eventId: number) =>
     http
       .get<Participant[]>(`/api/events/${eventId}/participants`)
-      .then((r) => r.data),
+      .then((r) => asArray<Participant>(r.data)),
   create: (eventId: number, data: { name: string; phone: string; department?: string; remark?: string }) =>
     http
       .post<Participant>(`/api/events/${eventId}/participants`, data)
@@ -75,7 +76,9 @@ export const checkinApi = {
 // ---------- 奖项 ----------
 export const prizeApi = {
   list: (eventId: number) =>
-    http.get<Prize[]>(`/api/events/${eventId}/prizes`).then((r) => r.data),
+    http
+      .get<Prize[]>(`/api/events/${eventId}/prizes`)
+      .then((r) => asArray<Prize>(r.data)),
   create: (eventId: number, data: PrizePayload) =>
     http.post<Prize>(`/api/events/${eventId}/prizes`, data).then((r) => r.data),
   update: (eventId: number, prizeId: number, data: Partial<PrizePayload>) =>
@@ -96,7 +99,9 @@ export const drawApi = {
       .post<DrawResult>(`/api/events/${eventId}/draws`, data)
       .then((r) => r.data),
   records: (eventId: number) =>
-    http.get<DrawRecord[]>(`/api/events/${eventId}/draws`).then((r) => r.data),
+    http
+      .get<DrawRecord[]>(`/api/events/${eventId}/draws`)
+      .then((r) => asArray<DrawRecord>(r.data)),
   reset: (eventId: number, prizeId?: number) =>
     http.delete(`/api/events/${eventId}/draws`, {
       params: prizeId ? { prize_id: prizeId } : {},

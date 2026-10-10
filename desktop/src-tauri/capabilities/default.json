@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "默认权限：主窗口可访问核心 API 与 shell 打开链接",
-  "windows": ["main"],
+  "description": "默认权限：主窗口可访问核心 API、shell 打开链接",
+  "windows": ["main", "lottery-*"],
   "permissions": [
     "core:default",
     "shell:allow-open"

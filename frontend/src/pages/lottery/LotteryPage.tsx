@@ -9,8 +9,8 @@ import type { DrawWinner, EventDetail, EventStats, Prize, WsMessage } from '@/ty
 type Phase = 'idle' | 'rolling' | 'result'
 
 export default function LotteryPage() {
-  const { eventId } = useParams<{ eventId: string }>()
-  const id = Number(eventId)
+  const { eventId: routeEventId } = useParams<{ eventId: string }>()
+  const id = Number(routeEventId)
 
   const [event, setEvent] = useState<EventDetail | null>(null)
   const [prizes, setPrizes] = useState<Prize[]>([])

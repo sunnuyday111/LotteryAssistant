@@ -27,6 +27,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { eventApi, exportApi, checkinApi, participantApi, prizeApi } from '@/api'
 import { extractError } from '@/api/http'
+import { openLotteryScreen } from '@/utils/openLottery'
 import type {
   EventDetail,
   Participant,
@@ -213,7 +214,7 @@ export default function EventDetailPage() {
             <Button onClick={() => navigate('/events')}>返回列表</Button>
             <Button
               type="primary"
-              onClick={() => window.open(`/lottery/${id}`, '_blank')}
+              onClick={() => void openLotteryScreen(id)}
             >
               打开抽奖大屏
             </Button>
