@@ -32,6 +32,9 @@ export const eventApi = {
       .get<{ token: string; url: string }>(`/api/events/${id}/checkin-url`)
       .then((r) => r.data),
   qrcodeUrl: (id: number) => `${http.defaults.baseURL ?? ''}/api/events/${id}/qrcode`,
+  /** 直接取二维码 PNG（Blob），适用于 Tauri WebView 中转 data:URL 显示。 */
+  qrcode: (id: number) =>
+    http.get(`/api/events/${id}/qrcode`, { responseType: 'blob' }),
 }
 
 // ---------- 参与者 ----------

@@ -1,12 +1,15 @@
 """FastAPI 应用入口。"""
 
 import io
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import qrcode
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from .api import checkins, draws, events, exports, participants, prizes, stats, ws
@@ -88,3 +91,41 @@ def get_checkin_url(event: Event = Depends(get_event_or_404)) -> dict:
         "token": event.checkin_token,
         "url": f"{settings.checkin_base_url}/{event.checkin_token}",
     }
+
+
+# ---------- 前端静态资源（SPA fallback） ----------
+# 仅当 frontend_dist 目录存在时启用：方便桌面端直接用系统浏览器打开大屏
+# 默认查找路径：
+#   1. 环境变量 FRONTEND_DIST 指向的目录
+#   2. backend/../frontend/dist（开发与本地构建）
+FRONTEND_DIST = (
+    os.environ.get("FRONTEND_DIST")
+    or str(Path(__file__).resolve().parent.parent.parent / "frontend" / "dist")
+)
+INDEX_HTML = Path(FRONTEND_DIST) / "index.html"
+ASSETS_DIR = Path(FRONTEND_DIST) / "assets"
+
+if INDEX_HTML.exists():
+    if ASSETS_DIR.exists():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(ASSETS_DIR)),
+            name="frontend-assets",
+        )
+
+    @app.get("/", include_in_schema=False)
+    async def spa_root() -> FileResponse:
+        return FileResponse(str(INDEX_HTML))
+
+    @app.get("/index.html", include_in_schema=False)
+    async def spa_index() -> FileResponse:
+        return FileResponse(str(INDEX_HTML))
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str) -> FileResponse:
+        # 仅处理非 /api/ 路径，避免拦截 API
+        if full_path.startswith("api/") or full_path.startswith("api"):
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="Not Found")
+        return FileResponse(str(INDEX_HTML))

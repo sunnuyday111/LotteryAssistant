@@ -48,6 +48,7 @@ export default function EventDetailPage() {
 
   const [qrOpen, setQrOpen] = useState(false)
   const [checkinUrl, setCheckinUrl] = useState('')
+  const [qrImage, setQrImage] = useState('')
   const [importResult, setImportResult] = useState<ParticipantImportResult | null>(
     null,
   )
@@ -84,6 +85,13 @@ export default function EventDetailPage() {
     try {
       const data = await eventApi.checkinUrl(id)
       setCheckinUrl(data.url)
+      // Tauri WebView 用 <img src="/api/..."> 在 tauri:// 协议下加载不到，
+      // 改为 axios 直接取 PNG 并转 data:URL 内嵌显示
+      const res = await eventApi.qrcode(id)
+      const blob = res.data as Blob
+      const reader = new FileReader()
+      reader.onload = () => setQrImage(String(reader.result))
+      reader.readAsDataURL(blob)
       setQrOpen(true)
     } catch (err) {
       message.error(extractError(err))
@@ -412,7 +420,7 @@ export default function EventDetailPage() {
       >
         <div style={{ textAlign: 'center' }}>
           <img
-            src={eventApi.qrcodeUrl(id)}
+            src={qrImage || eventApi.qrcodeUrl(id)}
             alt="签到二维码"
             style={{ width: 280, height: 280 }}
           />
