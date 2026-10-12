@@ -2,6 +2,7 @@
 
 import io
 import os
+import socket
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -18,6 +19,21 @@ from .database import get_db, init_db
 from .models import Event
 from .services import event_service
 from .api.deps import get_event_or_404
+
+
+def _resolve_checkin_base_url() -> str:
+    """根据运行环境返回签到二维码应该使用的 base URL。
+
+    优先级：
+      1. 环境变量 CHECKIN_BASE_URL 显式覆盖
+      2. LOTTERY_PUBLIC_HOST 环境变量指定的公网/局域网 host
+      4. 用户在 settings.checkin_base_url 中配置的地址
+    """
+
+    override = os.environ.get("CHECKIN_BASE_URL")
+    if override:
+        return override.rstrip("/")
+    return settings.checkin_base_url.rstrip("/")
 
 
 @asynccontextmanager
@@ -71,7 +87,7 @@ def get_checkin_qrcode(
 ) -> Response:
     """生成指向签到页面的二维码 PNG 图片。"""
 
-    url = f"{settings.checkin_base_url}/{event.checkin_token}"
+    url = f"{_resolve_checkin_base_url()}/{event.checkin_token}"
     img = qrcode.make(url)
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
@@ -87,9 +103,10 @@ def get_checkin_qrcode(
 def get_checkin_url(event: Event = Depends(get_event_or_404)) -> dict:
     """返回签到页面 URL 与令牌。"""
 
+    base = _resolve_checkin_base_url()
     return {
         "token": event.checkin_token,
-        "url": f"{settings.checkin_base_url}/{event.checkin_token}",
+        "url": f"{base}/{event.checkin_token}",
     }
 
 
@@ -125,6 +142,12 @@ if INDEX_HTML.exists():
     async def spa_fallback(full_path: str) -> FileResponse:
         # 仅处理非 /api/ 路径，避免拦截 API
         if full_path.startswith("api/") or full_path.startswith("api"):
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="Not Found")
+        # 如果请求的是带扩展名的静态资源（js/css/png 等），返回 404 而不是 index.html
+        # 防止 relative base 把 /checkin/<token>/assets/index.js 误返回 HTML
+        if "." in full_path.rsplit("/", 1)[-1]:
             from fastapi import HTTPException
 
             raise HTTPException(status_code=404, detail="Not Found")

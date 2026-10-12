@@ -20,7 +20,9 @@ function stripCrossorigin(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), stripCrossorigin()],
-  base: './',
+  // 绝对根路径：保证无论页面 URL 是什么（/checkin/<token>、/events/<id>），
+  // 资源都能从根加载；Tauri tauri:// 协议同样适用
+  base: '/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

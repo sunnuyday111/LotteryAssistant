@@ -150,36 +150,58 @@ docker compose up -d --build
 3. **Node.js 18+**（前端构建）
 4. **WebView2 Runtime**：Windows 10/11 通常已内置；Win10 早期版本需安装 [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/)
 
-### 打包步骤
+### 打包步骤（含内置后端，开箱即用）
+
+桌面端会把 **FastAPI 后端打包为 sidecar 可执行文件**，随安装包一起分发。
+用户安装后**无需单独启动后端**，双击 exe 即可使用（后端由桌面端自动拉起）。
 
 ```bash
-# 1. 构建前端静态资源（Tauri 会自动调用，也可手动执行）
+# 1. 构建前端静态资源
 cd frontend
 npm install
 npm run build
 
-# 2. 安装桌面端依赖并打包
+# 2. 打包后端为 sidecar（PyInstaller）
+cd ../backend
+.venv/Scripts/python.exe -m pip install pyinstaller
+.venv/Scripts/python.exe build_sidecar.py
+# 产物：desktop/src-tauri/binaries/lottery-backend-x86_64-pc-windows-msvc.exe
+
+# 3. 打包桌面端（会自动嵌入 sidecar）
 cd ../desktop
 npm install
 npm run build
 ```
 
-`npm run build` 会自动执行 `beforeBuildCommand`（构建前端）并编译 Rust，首次编译耗时较长（约 5–15 分钟）。
+也可以一步到位（在 `desktop` 目录）：
+
+```bash
+npm run build:all   # 先打包 sidecar，再打包 Tauri 应用
+```
+
+首次编译 Rust 耗时较长（约 5–15 分钟）。
 
 ### 产物位置
 
 ```
 desktop/src-tauri/target/release/bundle/
-├── nsis/活动签到抽奖助手_0.1.0_x64-setup.exe   # NSIS 安装包
-└── msi/活动签到抽奖助手_0.1.0_x64_en-US.msi    # MSI 安装包
+└── nsis/活动签到抽奖助手_0.1.0_x64-setup.exe   # NSIS 安装包（含内置后端）
 ```
+
+### 运行时数据
+
+- **数据库**：`%APPDATA%\LotteryAssistant\lottery.db`（SQLite，自动创建）
+- **后端端口**：默认 `127.0.0.1:8000`，可通过环境变量 `LOTTERY_PORT` 覆盖
+- 桌面端启动时自动拉起后端进程，退出时自动关闭
 
 ### 常用命令
 
 | 命令 | 说明 |
 |------|------|
-| `npm run dev` | 开发模式（热重载，自动启动前端 dev server） |
-| `npm run build` | 打包正式安装包 |
+| `npm run dev` | 开发模式（热重载，需手动启动后端） |
+| `npm run build:sidecar` | 仅打包后端 sidecar |
+| `npm run build:all` | 打包 sidecar + 桌面端安装包 |
+| `npm run build` | 仅打包桌面端（需先有 sidecar） |
 | `npm run tauri icon <图片>` | 由一张 1024×1024 PNG 重新生成全套图标 |
 
 ### 图标
@@ -191,7 +213,8 @@ cd desktop
 npm run tauri icon path/to/logo.png
 ```
 
-> 注意：桌面端默认连接云端后端（`frontend` 中的 API 地址）。如需离线单机版，可将后端打包为本地服务并改用 SQLite。
+> 说明：开发模式（`npm run dev`）下后端不会自动拉起，需手动执行
+> `cd backend && .venv/Scripts/python.exe -m uvicorn app.main:app --port 8000`。
 
 ## 环境变量
 

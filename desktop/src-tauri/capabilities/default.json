@@ -1,10 +1,20 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "默认权限：主窗口可访问核心 API、shell 打开链接",
+  "description": "默认权限：主窗口可访问核心 API、shell 打开链接、执行后端 sidecar",
   "windows": ["main", "lottery-*"],
   "permissions": [
     "core:default",
-    "shell:allow-open"
+    "shell:allow-open",
+    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/lottery-backend",
+          "sidecar": true
+        }
+      ]
+    }
   ]
 }
