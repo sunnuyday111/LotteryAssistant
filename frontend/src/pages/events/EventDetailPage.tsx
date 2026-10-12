@@ -15,10 +15,14 @@ import {
   Tag,
   Typography,
   Upload,
+  Dropdown,
   message,
 } from 'antd'
 import {
+  CheckCircleOutlined,
+  ClockCircleOutlined,
   DownloadOutlined,
+  PauseCircleOutlined,
   PlusOutlined,
   QrcodeOutlined,
   UploadOutlined,
@@ -216,6 +220,19 @@ export default function EventDetailPage() {
     }
   }
 
+  const handleChangeStatus = async (status: 'draft' | 'ongoing' | 'finished') => {
+    try {
+      await eventApi.update(id, { status })
+      message.success(
+        status === 'finished' ? '已结束活动' :
+        status === 'ongoing' ? '已开启活动' : '已重置为草稿',
+      )
+      void loadAll()
+    } catch (err) {
+      message.error(extractError(err))
+    }
+  }
+
   const downloadBlob = async (blob: Blob, filename: string) => {
     if (isTauri()) {
       // Tauri WebView 下 blob: URL 的 <a download> 不可靠，改用 Rust 端落盘
@@ -268,6 +285,37 @@ export default function EventDetailPage() {
         extra={
           <Space>
             <Button onClick={() => navigate('/events')}>返回列表</Button>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'draft',
+                    icon: <ClockCircleOutlined />,
+                    label: '重置为草稿',
+                    disabled: event?.status === 'draft',
+                  },
+                  {
+                    key: 'ongoing',
+                    icon: <CheckCircleOutlined />,
+                    label: '开启活动（进行中）',
+                    disabled: event?.status === 'ongoing',
+                  },
+                  {
+                    key: 'finished',
+                    icon: <PauseCircleOutlined />,
+                    label: '结束活动',
+                    disabled: event?.status === 'finished',
+                  },
+                ],
+                onClick: ({ key }) => {
+                  void handleChangeStatus(
+                    key as 'draft' | 'ongoing' | 'finished',
+                  )
+                },
+              }}
+            >
+              <Button>切换状态</Button>
+            </Dropdown>
             <Button
               type="primary"
               onClick={() => void openLotteryScreen(id)}

@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import {
   Button,
   Card,
+  DatePicker,
   Empty,
   Form,
   Input,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tag,
@@ -176,7 +178,15 @@ export default function EventListPage() {
         onCancel={() => setModalOpen(false)}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" preserve={false}>
+        <Form
+          form={form}
+          layout="vertical"
+          preserve={false}
+          initialValues={{
+            status: 'ongoing',
+            start_time: dayjs(),
+          }}
+        >
           <Form.Item
             name="name"
             label="活动名称"
@@ -186,6 +196,31 @@ export default function EventListPage() {
           </Form.Item>
           <Form.Item name="location" label="活动地点">
             <Input placeholder="例如：三楼宴会厅" maxLength={200} />
+          </Form.Item>
+          <Form.Item
+            name="start_time"
+            label="开始时间"
+            getValueProps={(value) =>
+              value ? { value: dayjs(value) as unknown as dayjs.Dayjs } : {}
+            }
+            normalize={(value: dayjs.Dayjs | null) =>
+              value ? value.toISOString() : null
+            }
+          >
+            <DatePicker
+              showTime
+              format="YYYY-MM-DD HH:mm"
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+          <Form.Item name="status" label="状态">
+            <Select
+              options={[
+                { value: 'draft', label: '草稿' },
+                { value: 'ongoing', label: '进行中' },
+                { value: 'finished', label: '已结束' },
+              ]}
+            />
           </Form.Item>
           <Form.Item name="description" label="活动说明">
             <Input.TextArea rows={3} placeholder="活动简介、注意事项等" />
