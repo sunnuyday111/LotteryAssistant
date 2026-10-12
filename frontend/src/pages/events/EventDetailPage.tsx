@@ -22,12 +22,15 @@ import {
   PlusOutlined,
   QrcodeOutlined,
   UploadOutlined,
+  UserAddOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { eventApi, exportApi, checkinApi, participantApi, prizeApi } from '@/api'
 import { extractError } from '@/api/http'
 import { openLotteryScreen } from '@/utils/openLottery'
+import { isTauri } from '@/utils/isTauri'
+import { invoke } from '@/utils/tauriInvoke'
 import type {
   EventDetail,
   Participant,
@@ -57,6 +60,11 @@ export default function EventDetailPage() {
   const [prizeModalOpen, setPrizeModalOpen] = useState(false)
   const [editingPrize, setEditingPrize] = useState<Prize | null>(null)
   const [prizeForm] = Form.useForm<PrizePayload>()
+
+  // 手动添加参与者
+  const [addOpen, setAddOpen] = useState(false)
+  const [addSubmitting, setAddSubmitting] = useState(false)
+  const [addForm] = Form.useForm<{ name: string; phone: string; department?: string }>()
 
   const loadAll = useCallback(async () => {
     if (!id) return
@@ -117,6 +125,31 @@ export default function EventDetailPage() {
       void loadAll()
     } catch (err) {
       message.error(extractError(err))
+    }
+  }
+
+  const openAddModal = () => {
+    addForm.resetFields()
+    setAddOpen(true)
+  }
+
+  const handleAddParticipant = async () => {
+    try {
+      const values = await addForm.validateFields()
+      setAddSubmitting(true)
+      await participantApi.create(id, {
+        name: values.name,
+        phone: values.phone,
+        department: values.department,
+      })
+      message.success('已添加参与者')
+      setAddOpen(false)
+      void loadAll()
+    } catch (err) {
+      if (err && typeof err === 'object' && 'errorFields' in err) return
+      message.error(extractError(err))
+    } finally {
+      setAddSubmitting(false)
     }
   }
 
@@ -183,7 +216,22 @@ export default function EventDetailPage() {
     }
   }
 
-  const downloadBlob = (blob: Blob, filename: string) => {
+  const downloadBlob = async (blob: Blob, filename: string) => {
+    if (isTauri()) {
+      // Tauri WebView 下 blob: URL 的 <a download> 不可靠，改用 Rust 端落盘
+      const buf = await blob.arrayBuffer()
+      const bytes = new Uint8Array(buf)
+      let binary = ''
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+      const dataBase64 = btoa(binary)
+      try {
+        await invoke('save_download', { filename, dataBase64 })
+        message.success(`已保存到下载文件夹：${filename}`)
+      } catch (err) {
+        message.error(`保存失败：${String(err)}`)
+      }
+      return
+    }
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -195,7 +243,7 @@ export default function EventDetailPage() {
   const handleExportCheckins = async () => {
     try {
       const res = await exportApi.checkins(id)
-      downloadBlob(res.data, `${event?.name ?? '活动'}_签到明细.xlsx`)
+      await downloadBlob(res.data, `${event?.name ?? '活动'}_签到明细.xlsx`)
     } catch (err) {
       message.error(extractError(err))
     }
@@ -204,7 +252,7 @@ export default function EventDetailPage() {
   const handleExportDraws = async () => {
     try {
       const res = await exportApi.draws(id)
-      downloadBlob(res.data, `${event?.name ?? '活动'}_中奖名单.xlsx`)
+      await downloadBlob(res.data, `${event?.name ?? '活动'}_中奖名单.xlsx`)
     } catch (err) {
       message.error(extractError(err))
     }
@@ -271,6 +319,9 @@ export default function EventDetailPage() {
                     >
                       <Button icon={<UploadOutlined />}>导入 Excel/CSV</Button>
                     </Upload>
+                    <Button icon={<UserAddOutlined />} onClick={openAddModal}>
+                      添加参与者
+                    </Button>
                     <Button icon={<QrcodeOutlined />} onClick={showQrcode}>
                       签到二维码
                     </Button>
@@ -499,6 +550,41 @@ export default function EventDetailPage() {
           </Form.Item>
           <Form.Item name="description" label="奖品描述">
             <Input placeholder="例如：iPhone 16 Pro" maxLength={255} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 添加参与者弹窗 */}
+      <Modal
+        title="添加参与者"
+        open={addOpen}
+        onOk={handleAddParticipant}
+        onCancel={() => setAddOpen(false)}
+        confirmLoading={addSubmitting}
+        destroyOnClose
+        okText="保存"
+        cancelText="取消"
+      >
+        <Form form={addForm} layout="vertical" preserve={false}>
+          <Form.Item
+            name="name"
+            label="姓名"
+            rules={[{ required: true, message: '请输入姓名' }]}
+          >
+            <Input placeholder="例如：张三" maxLength={50} />
+          </Form.Item>
+          <Form.Item
+            name="phone"
+            label="手机号"
+            rules={[
+              { required: true, message: '请输入手机号' },
+              { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的 11 位手机号' },
+            ]}
+          >
+            <Input placeholder="例如：13800000001" maxLength={11} />
+          </Form.Item>
+          <Form.Item name="department" label="部门">
+            <Input placeholder="例如：技术部（可选）" maxLength={100} />
           </Form.Item>
         </Form>
       </Modal>

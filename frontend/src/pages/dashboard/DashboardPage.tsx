@@ -16,6 +16,8 @@ import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import { exportApi, statsApi } from '@/api'
 import { extractError } from '@/api/http'
+import { isTauri } from '@/utils/isTauri'
+import { invoke } from '@/utils/tauriInvoke'
 import type { EventStats, PrizeStat } from '@/types'
 
 export default function DashboardPage() {
@@ -42,7 +44,21 @@ export default function DashboardPage() {
     void load()
   }, [load])
 
-  const downloadBlob = (blob: Blob, filename: string) => {
+  const downloadBlob = async (blob: Blob, filename: string) => {
+    if (isTauri()) {
+      const buf = await blob.arrayBuffer()
+      const bytes = new Uint8Array(buf)
+      let binary = ''
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+      const dataBase64 = btoa(binary)
+      try {
+        await invoke('save_download', { filename, dataBase64 })
+        message.success(`已保存到下载文件夹：${filename}`)
+      } catch (err) {
+        message.error(`保存失败：${String(err)}`)
+      }
+      return
+    }
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -54,7 +70,7 @@ export default function DashboardPage() {
   const handleExportCheckins = async () => {
     try {
       const res = await exportApi.checkins(id)
-      downloadBlob(res.data, `${stats?.event_name ?? '活动'}_签到明细.xlsx`)
+      await downloadBlob(res.data, `${stats?.event_name ?? '活动'}_签到明细.xlsx`)
     } catch (err) {
       message.error(extractError(err))
     }
@@ -63,7 +79,7 @@ export default function DashboardPage() {
   const handleExportDraws = async () => {
     try {
       const res = await exportApi.draws(id)
-      downloadBlob(res.data, `${stats?.event_name ?? '活动'}_中奖名单.xlsx`)
+      await downloadBlob(res.data, `${stats?.event_name ?? '活动'}_中奖名单.xlsx`)
     } catch (err) {
       message.error(extractError(err))
     }

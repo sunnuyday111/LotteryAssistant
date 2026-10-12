@@ -1,7 +1,10 @@
 /** Axios 实例配置。 */
 
-import axios from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
 import { isTauri } from '@/utils/isTauri'
+
+/** 扩展请求配置，附加重试计数器。 */
+type RetryableConfig = AxiosRequestConfig & { __retryCount?: number }
 
 /** 后端 API 基础地址：
  *  - 显式 VITE_API_BASE_URL 优先
@@ -18,8 +21,16 @@ export const http = axios.create({
   timeout: 30000,
 })
 
-/** Tauri WebView 在请求未匹配资源时偶尔会返回 200+空 body，
- *  这里把非 2xx 都视为错误，并把空 body 抛成明确的错误。 */
+/** 为每个请求初始化重试计数器。 */
+http.interceptors.request.use((config) => {
+  if (config && (config as { __retryCount?: number }).__retryCount === undefined) {
+    ;(config as { __retryCount?: number }).__retryCount = 0
+  }
+  return config
+})
+
+/** 响应拦截器：把 200+空 body 当错误（防御 Tauri 协议异常），
+ *  并对桌面端的网络错误做指数退避重试。 */
 http.interceptors.response.use(
   (response) => {
     if (response.status >= 200 && response.status < 300) {
@@ -27,7 +38,20 @@ http.interceptors.response.use(
     }
     return Promise.reject(new Error(`HTTP ${response.status}`))
   },
-  (error) => Promise.reject(error),
+  async (error) => {
+    if (!isTauri()) return Promise.reject(error)
+    const config = error.config as RetryableConfig | undefined
+    if (!config || config.__retryCount === undefined) return Promise.reject(error)
+    const isGet = (config.method ?? 'get').toLowerCase() === 'get'
+    const transient =
+      !error.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNREFUSED'
+    if (!isGet || !transient || config.__retryCount >= 8) return Promise.reject(error)
+
+    config.__retryCount += 1
+    const delay = Math.min(250 * 2 ** (config.__retryCount - 1), 2000)
+    await new Promise((r) => setTimeout(r, delay))
+    return http.request(config)
+  },
 )
 
 /** 统一错误提示提取。 */

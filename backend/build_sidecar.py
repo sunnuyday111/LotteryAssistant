@@ -58,6 +58,8 @@ def main() -> None:
         "--noconfirm",
         "--clean",
         "--onefile",
+        # 后端是 CLI 服务，需要保留控制台窗口显示 uvicorn / 应用日志
+        "--console",
         "--name",
         "lottery-backend",
         # 把 app 包与前端资源一起打包
