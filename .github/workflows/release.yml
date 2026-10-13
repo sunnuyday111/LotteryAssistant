@@ -93,6 +93,11 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - uses: actions/download-artifact@v4
+        with:
           name: sidecar
           path: desktop/src-tauri/binaries
 
@@ -143,10 +148,16 @@ jobs:
         # 写成文件而不是命令行传 JSON —— PowerShell 会剥掉双引号导致解析失败。
         shell: pwsh
         run: |
+          if (-not (Test-Path frontend/dist/index.html)) {
+            throw "frontend/dist/index.html 不存在，artifact 下载可能失败"
+          }
+          if (-not (Test-Path desktop/src-tauri/binaries/lottery-backend-x86_64-pc-windows-msvc.exe)) {
+            throw "sidecar 不存在，artifact 下载可能失败"
+          }
           '{ "build": { "beforeBuildCommand": "" } }' |
-            Out-File -FilePath tauri.ci.json -Encoding utf8
-          npx tauri build --config tauri.ci.json
-        working-directory: desktop
+            Out-File -FilePath desktop/tauri.ci.json -Encoding utf8
+          Push-Location desktop
+          try { npx tauri build --config tauri.ci.json } finally { Pop-Location }
 
       - name: 收集产物
         shell: pwsh
