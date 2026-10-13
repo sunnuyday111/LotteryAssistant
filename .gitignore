@@ -42,6 +42,8 @@ desktop/src-tauri/binaries/
 backend/build/
 backend/frontend_dist/
 *.spec
+# CI 临时配置覆盖
+desktop/tauri.ci.json
 
 # IDE
 .vscode/*

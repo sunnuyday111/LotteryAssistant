@@ -139,12 +139,13 @@ jobs:
 
       - name: 打包安装包
         # 前端 dist 与后端 sidecar 均已由前置 job 构建并以 artifact 传入，
-        # 因此覆盖掉 beforeBuildCommand，避免重复构建且缺少 frontend/node_modules
+        # 因此覆盖掉 beforeBuildCommand，避免重复构建且缺少 frontend/node_modules。
+        # 写成文件而不是命令行传 JSON —— PowerShell 会剥掉双引号导致解析失败。
         shell: pwsh
         run: |
-          $override = '{"build":{"beforeBuildCommand":""}}'
-          $env:TAURI_CONFIG_OVERRIDE = $override
-          npx tauri build --config $override
+          '{ "build": { "beforeBuildCommand": "" } }' |
+            Out-File -FilePath tauri.ci.json -Encoding utf8
+          npx tauri build --config tauri.ci.json
         working-directory: desktop
 
       - name: 收集产物
