@@ -8,10 +8,16 @@
 """
 
 import io
+import sys
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+
+# Windows 控制台默认 cp1252，无法编码中文；强制切换到 UTF-8
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 client = TestClient(app)
 

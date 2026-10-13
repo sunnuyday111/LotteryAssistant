@@ -13,6 +13,9 @@ on:
 
 env:
   PYTHON_VERSION: '3.12'
+  # Windows 控制台默认 cp1252，无法输出中文
+  PYTHONIOENCODING: 'utf-8'
+  PYTHONUTF8: '1'
 
 jobs:
   # ---------- 1. 构建前端静态资源 ----------

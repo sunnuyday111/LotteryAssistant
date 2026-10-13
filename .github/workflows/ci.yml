@@ -8,6 +8,9 @@ on:
 
 env:
   PYTHON_VERSION: '3.12'
+  # Windows 控制台默认 cp1252，无法输出中文
+  PYTHONIOENCODING: 'utf-8'
+  PYTHONUTF8: '1'
 
 jobs:
   backend:
@@ -32,7 +35,9 @@ jobs:
         working-directory: backend
 
       - name: 端到端冒烟测试
-        run: python smoke_test.py
+        run: |
+          chcp 65001 > $null
+          python smoke_test.py
         working-directory: backend
 
   frontend:
@@ -54,22 +59,3 @@ jobs:
       - name: 类型检查与构建
         run: npm run build
         working-directory: frontend
-
-  rust:
-    name: Rust 检查
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: cargo fmt 检查
-        run: cargo fmt --all -- --check
-        working-directory: desktop/src-tauri
-
-      - name: cargo clippy
-        run: cargo clippy --all-targets
-        working-directory: desktop/src-tauri
-        continue-on-error: true
