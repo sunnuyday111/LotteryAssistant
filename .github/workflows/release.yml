@@ -138,7 +138,13 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: 打包安装包
-        run: npx tauri build
+        # 前端 dist 与后端 sidecar 均已由前置 job 构建并以 artifact 传入，
+        # 因此覆盖掉 beforeBuildCommand，避免重复构建且缺少 frontend/node_modules
+        shell: pwsh
+        run: |
+          $override = '{"build":{"beforeBuildCommand":""}}'
+          $env:TAURI_CONFIG_OVERRIDE = $override
+          npx tauri build --config $override
         working-directory: desktop
 
       - name: 收集产物
