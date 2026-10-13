@@ -274,8 +274,8 @@ git commit -m "perf(api): 抽奖接口增加缓存"
 ### 本地验证 CI 配置
 
 ```bash
-# 后端
-cd backend && .venv/Scripts/python.exe smoke_test.py
+# 后端（导入检查）
+cd backend && .venv/Scripts/python.exe -c "from app.main import app; print(len(app.routes))"
 
 # 前端
 cd frontend && npm run build

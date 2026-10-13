@@ -137,12 +137,8 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-tauri
-
       - name: 打包安装包
-        run: cargo tauri build
+        run: npx tauri build
         working-directory: desktop
 
       - name: 收集产物
