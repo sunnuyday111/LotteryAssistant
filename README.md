@@ -216,6 +216,74 @@ npm run tauri icon path/to/logo.png
 > 说明：开发模式（`npm run dev`）下后端不会自动拉起，需手动执行
 > `cd backend && .venv/Scripts/python.exe -m uvicorn app.main:app --port 8000`。
 
+## GitHub Actions 流水线
+
+仓库内置两条流水线：
+
+| 流水线 | 文件 | 触发条件 | 作用 |
+|--------|------|----------|------|
+| **CI** | [.github/workflows/ci.yml](.github/workflows/ci.yml) | push / PR 到 `main` | 后端导入检查 + 冒烟测试、前端类型检查与构建、Rust fmt/clippy |
+| **Release** | [.github/workflows/release.yml](.github/workflows/release.yml) | 推送 `v*` 标签，或手动触发 | 构建前端 → 打包 sidecar → 构建安装包 → 上传 Release |
+
+### 发布新版本
+
+```bash
+git add .
+git commit -m "chore: release v0.1.0"
+git tag v0.1.0
+git push origin main --tags
+```
+
+流水线会自动完成：
+
+1. `npm ci && npm run build`（前端）
+2. `pip install -r requirements.txt pyinstaller` → `python build_sidecar.py`（后端单文件）
+3. `cargo tauri build`（把 sidecar 嵌入主 EXE 并生成 NSIS 安装包）
+4. 创建 GitHub Release 并附带 `*.exe` / `*.msi`
+
+### 手动触发发布
+
+GitHub 仓库 → **Actions** → **构建并发布桌面端** → **Run workflow**，
+可勾选 `publish_release` 决定是否创建 Release。
+
+### Commit 规范（决定 Release 变更列表分类）
+
+Release 会读取两个标签之间的 commit message，按 [Conventional Commits](https://www.conventionalcommits.org/) 自动分到不同分组：
+
+| 前缀 | Release 分组 |
+|------|-------------|
+| `feat:` | ✨ 新功能 |
+| `fix:` | 🐛 问题修复 |
+| `perf:` | ⚡ 性能优化 |
+| `refactor:` / `style:` | ♻️ 重构 |
+| `docs:` | 📚 文档 |
+| `chore:` / `build:` / `ci:` / `test:` | 🔧 构建 / 杂项 |
+| 其他 | 📦 其他 |
+
+支持带 scope，例：`feat(backend): 支持自定义奖项权重`，Release 中会显示为 `- [backend] 支持自定义奖项权重 (feat)`。
+
+```bash
+git commit -m "feat(export): 支持导出中奖名单"
+git commit -m "fix(tauri): 修复桌面端大屏白屏"
+git commit -m "perf(api): 抽奖接口增加缓存"
+```
+
+> 注意：changelog 只统计**非合并 commit**（`--no-merges`），所以请不要用 merge commit 承载功能改动，
+> 推荐 squash merge 或直接 push 提交。
+
+### 本地验证 CI 配置
+
+```bash
+# 后端
+cd backend && .venv/Scripts/python.exe smoke_test.py
+
+# 前端
+cd frontend && npm run build
+
+# Rust
+cd desktop/src-tauri && cargo fmt --all -- --check
+```
+
 ## 环境变量
 
 后端支持通过 `.env` 文件或环境变量配置（参考 `backend/.env.example`）：

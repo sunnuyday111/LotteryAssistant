@@ -1,0 +1,259 @@
+name: 构建并发布桌面端
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: '是否创建 GitHub Release'
+        type: boolean
+        default: true
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  # ---------- 1. 构建前端静态资源 ----------
+  build-frontend:
+    name: 构建前端
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+        working-directory: frontend
+
+      - name: 构建
+        run: npm run build
+        working-directory: frontend
+
+      - name: 上传 dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 3
+
+  # ---------- 2. 用 PyInstaller 把后端打成单文件 ----------
+  build-sidecar:
+    name: 打包后端 sidecar
+    runs-on: windows-latest
+    needs: build-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 安装后端依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt pyinstaller
+
+      - name: 打包 sidecar
+        run: python build_sidecar.py
+        working-directory: backend
+
+      - name: 上传 sidecar
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidecar
+          path: desktop/src-tauri/binaries/lottery-backend-x86_64-pc-windows-msvc.exe
+          retention-days: 3
+
+  # ---------- 3. 打包 Tauri 应用并发布 ----------
+  release:
+    name: 打包桌面端
+    runs-on: windows-latest
+    needs: build-sidecar
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sidecar
+          path: desktop/src-tauri/binaries
+
+      # 找出当前标签与上一个标签，用于确定 changelog 的提交范围
+      - name: 定位标签范围
+        id: tags
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ref = '${{ github.ref }}'
+
+          if ($ref -like 'refs/tags/*') {
+            $current = $ref.Replace('refs/tags/', '')
+            $previous = git tag --sort=-creatordate |
+              Where-Object { $_ -ne $current } |
+              Select-Object -First 1
+          } else {
+            $current = ''
+            $previous = ''
+          }
+
+          if (-not $previous) {
+            $previous = git tag --sort=-creatordate | Select-Object -First 1
+          }
+
+          "current=$current"  >> $env:GITHUB_OUTPUT
+          "previous=$previous" >> $env:GITHUB_OUTPUT
+          Write-Output "current=$current previous=$previous"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: 安装 Node 依赖
+        run: npm ci
+        working-directory: desktop
+
+      # Tauri 在 Windows 需要 MSVC 工具链与 WebView2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-tauri
+
+      - name: 打包安装包
+        run: cargo tauri build
+        working-directory: desktop
+
+      - name: 收集产物
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Get-ChildItem -Path desktop/src-tauri/target/release/bundle -Recurse -Include *.exe,*.msi |
+            Copy-Item -Destination release
+          Get-ChildItem release | Select-Object Name, Length
+
+      - name: 生成变更日志（按 conventional commits 分类）
+        id: changelog
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $previous = '${{ steps.tags.outputs.previous }}'
+
+          # 无上一个标签时取全部历史
+          if (-not $previous) {
+            $lines = git log --pretty=format:'%s' --no-merges
+          } else {
+            $lines = git log "$previous..HEAD" --pretty=format:'%s' --no-merges
+          }
+
+          $feat = @()
+          $fix  = @()
+          $perf = @()
+          $docs = @()
+          $refactor = @()
+          $chore = @()
+          $other = @()
+
+          foreach ($line in $lines) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            $subject = ($line -split '\r?\n')[0]
+            if ($subject -match '^(?<scope>\w+)(\([^)]+\))?:\s*(?<desc>.+)$') {
+              $scope = $Matches['scope']
+              $desc  = $Matches['desc']
+              $scopeText = if ($Matches[0] -match '\(([^)]+)\)') { "[$($Matches[1])] " } else { "" }
+              $entry = "- $scopeText$desc ($scope)"
+            } else {
+              $entry = "- $subject"
+              $scope = ''
+            }
+
+            switch -Regex ($subject) {
+              '^feat'          { $feat      += $entry; break }
+              '^fix'           { $fix       += $entry; break }
+              '^perf'          { $perf      += $entry; break }
+              '^docs'          { $docs      += $entry; break }
+              '^(refactor|style)' { $refactor += $entry; break }
+              '^(chore|build|ci|test)' { $chore += $entry; break }
+              default          { $other     += $entry }
+            }
+          }
+
+          $sb = New-Object System.Text.StringBuilder
+          [void]$sb.AppendLine("## 更新内容")
+          [void]$sb.AppendLine()
+
+          if ($feat.Count -gt 0) {
+            [void]$sb.AppendLine("### ✨ 新功能")
+            $feat | ForEach-Object { [void]$sb.AppendLine($_) }
+            [void]$sb.AppendLine()
+          }
+          if ($fix.Count -gt 0) {
+            [void]$sb.AppendLine("### 🐛 问题修复")
+            $fix | ForEach-Object { [void]$sb.AppendLine($_) }
+            [void]$sb.AppendLine()
+          }
+          if ($perf.Count -gt 0) {
+            [void]$sb.AppendLine("### ⚡ 性能优化")
+            $perf | ForEach-Object { [void]$sb.AppendLine($_) }
+            [void]$sb.AppendLine()
+          }
+          if ($refactor.Count -gt 0) {
+            [void]$sb.AppendLine("### ♻️ 重构")
+            $refactor | ForEach-Object { [void]$sb.AppendLine($_) }
+            [void]$sb.AppendLine()
+          }
+          if ($docs.Count -gt 0) {
+            [void]$sb.AppendLine("### 📚 文档")
+            $docs | ForEach-Object { [void]$sb.AppendLine($_) }
+            [void]$sb.AppendLine()
+          }
+          if ($chore.Count -gt 0) {
+            [void]$sb.AppendLine("### 🔧 构建 / 杂项")
+            $chore | ForEach-Object { [void]$sb.AppendLine($_) }
+            [void]$sb.AppendLine()
+          }
+          if ($other.Count -gt 0) {
+            [void]$sb.AppendLine("### 📦 其他")
+            $other | ForEach-Object { [void]$sb.AppendLine($_) }
+            [void]$sb.AppendLine()
+          }
+
+          $changelog = $sb.ToString()
+          $changelog | Out-File -FilePath CHANGELOG.md -Encoding utf8
+          Write-Output "===== CHANGELOG ====="
+          Write-Output $changelog
+
+      - name: 上传构件
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: release/*
+          retention-days: 30
+
+      - name: 创建 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.tags.outputs.current || format('nightly-{0}', github.run_number) }}
+          tag_name: ${{ steps.tags.outputs.current }}
+          body_path: CHANGELOG.md
+          files: release/*
+          draft: false
