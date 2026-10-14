@@ -94,6 +94,8 @@ def draw(db: Session, event: Event, data: DrawRequest) -> DrawResult:
     winners = random.sample(candidates, count)
 
     now = datetime.now()
+    # 无需现场领奖的奖项：中奖即视为已领取，避免统计里长期挂着一堆待领取
+    initial_status = "pending" if prize.claim_required else "claimed"
     records: list[DrawRecord] = []
     for participant in winners:
         record = DrawRecord(
@@ -101,11 +103,15 @@ def draw(db: Session, event: Event, data: DrawRequest) -> DrawResult:
             prize_id=prize.id,
             participant_id=participant.id,
             drawn_at=now,
+            claim_status=initial_status,
         )
         db.add(record)
         records.append(record)
 
     db.commit()
+
+    # 提交后记录才有 ID，此时生成领奖 URL
+    from . import claim_service
 
     winner_list = [
         DrawWinner(
@@ -113,8 +119,14 @@ def draw(db: Session, event: Event, data: DrawRequest) -> DrawResult:
             name=p.name,
             phone=p.phone,
             department=p.department,
+            record_id=rec.id,
+            claim_url=(
+                claim_service.build_claim_url(event, rec.id)
+                if prize.claim_required
+                else None
+            ),
         )
-        for p in winners
+        for p, rec in zip(winners, records)
     ]
 
     return DrawResult(
@@ -122,6 +134,8 @@ def draw(db: Session, event: Event, data: DrawRequest) -> DrawResult:
         message=f"成功抽取 {len(winner_list)} 位中奖者",
         prize_id=prize.id,
         prize_name=prize.name,
+        draw_mode=prize.draw_mode,
+        claim_required=prize.claim_required,
         winners=winner_list,
     )
 

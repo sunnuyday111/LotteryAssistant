@@ -56,6 +56,12 @@ export interface CheckinResult {
   already_checked_in: boolean
 }
 
+/** 抽奖玩法。 */
+export type DrawMode = 'roll' | 'wheel' | 'egg' | 'grid'
+
+/** 领奖状态。 */
+export type ClaimStatus = 'pending' | 'claimed'
+
 export interface Prize {
   id: number
   event_id: number
@@ -63,6 +69,8 @@ export interface Prize {
   quantity: number
   sort_order: number
   description: string | null
+  claim_required: boolean
+  draw_mode: DrawMode
   created_at: string
   drawn_count: number
 }
@@ -72,6 +80,8 @@ export interface PrizePayload {
   quantity: number
   sort_order?: number
   description?: string | null
+  claim_required?: boolean
+  draw_mode?: DrawMode
 }
 
 export interface DrawWinner {
@@ -79,6 +89,8 @@ export interface DrawWinner {
   name: string
   phone: string
   department: string | null
+  record_id: number | null
+  claim_url: string | null
 }
 
 export interface DrawResult {
@@ -86,6 +98,8 @@ export interface DrawResult {
   message: string
   prize_id: number
   prize_name: string
+  draw_mode: DrawMode
+  claim_required: boolean
   winners: DrawWinner[]
 }
 
@@ -95,9 +109,37 @@ export interface DrawRecord {
   prize_id: number
   participant_id: number
   drawn_at: string
+  claim_status: ClaimStatus
+  claimed_at: string | null
   prize_name: string | null
   participant_name: string | null
   participant_phone: string | null
+  claim_required: boolean
+  claim_url: string | null
+}
+
+export interface ClaimInfo {
+  record_id: number
+  participant_name: string
+  prize_name: string
+  drawn_at: string
+  claim_status: ClaimStatus
+  claimed_at: string | null
+}
+
+export interface ClaimResult {
+  success: boolean
+  message: string
+  info: ClaimInfo | null
+  already_claimed: boolean
+}
+
+export interface ClaimStats {
+  pending: number
+  claimed: number
+  /** 奖项配置为无需现场领奖的记录数。 */
+  exempt: number
+  total: number
 }
 
 export interface PrizeStat {
@@ -105,6 +147,9 @@ export interface PrizeStat {
   prize_name: string
   quantity: number
   drawn_count: number
+  claim_required: boolean
+  pending_count: number
+  claimed_count: number
 }
 
 export interface EventStats {
@@ -115,6 +160,9 @@ export interface EventStats {
   not_checked_in: number
   checkin_rate: number
   prize_stats: PrizeStat[]
+  claim_pending: number
+  claim_claimed: number
+  claim_exempt: number
 }
 
 export interface CheckinEventInfo {
@@ -142,3 +190,4 @@ export type WsMessage =
       winners: DrawWinner[]
     }
   | { type: 'draw_reset'; event_id: number; prize_id: number | null }
+  | { type: 'claim'; event_id: number; record_id: number; stats: ClaimStats }

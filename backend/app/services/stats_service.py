@@ -30,14 +30,36 @@ def get_event_stats(db: Session, event: Event) -> EventStats:
         drawn = db.scalar(
             select(func.count(DrawRecord.id)).where(DrawRecord.prize_id == prize.id)
         ) or 0
+        pending = db.scalar(
+            select(func.count(DrawRecord.id)).where(
+                DrawRecord.prize_id == prize.id,
+                DrawRecord.claim_status == "pending",
+            )
+        ) or 0
+        claimed = db.scalar(
+            select(func.count(DrawRecord.id)).where(
+                DrawRecord.prize_id == prize.id,
+                DrawRecord.claim_status == "claimed",
+            )
+        ) or 0
         prize_stats.append(
             PrizeStat(
                 prize_id=prize.id,
                 prize_name=prize.name,
                 quantity=prize.quantity,
                 drawn_count=drawn,
+                claim_required=prize.claim_required,
+                pending_count=pending,
+                claimed_count=claimed,
             )
         )
+
+    claim_pending = sum(p.pending_count for p in prize_stats)
+    # 免领奖项的记录会被自动置为已领取，这里只统计真正需要现场核销的
+    claim_claimed = sum(
+        p.claimed_count for p in prize_stats if p.claim_required
+    )
+    claim_exempt = sum(p.drawn_count for p in prize_stats if not p.claim_required)
 
     return EventStats(
         event_id=event.id,
@@ -47,4 +69,7 @@ def get_event_stats(db: Session, event: Event) -> EventStats:
         not_checked_in=max(total - checked, 0),
         checkin_rate=round(checked / total, 4) if total else 0.0,
         prize_stats=prize_stats,
+        claim_pending=claim_pending,
+        claim_claimed=claim_claimed,
+        claim_exempt=claim_exempt,
     )

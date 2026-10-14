@@ -9,6 +9,7 @@ import {
   Space,
   Statistic,
   Table,
+  Tag,
   Typography,
   message,
 } from 'antd'
@@ -131,6 +132,25 @@ export default function DashboardPage() {
           percent={Number(((stats?.checkin_rate ?? 0) * 100).toFixed(1))}
           status="active"
         />
+        <Row gutter={16} style={{ marginTop: 24 }}>
+          <Col span={8}>
+            <Statistic
+              title="待领取"
+              value={stats?.claim_pending ?? 0}
+              valueStyle={{ color: '#d97706' }}
+            />
+          </Col>
+          <Col span={8}>
+            <Statistic
+              title="已领取"
+              value={stats?.claim_claimed ?? 0}
+              valueStyle={{ color: '#16a34a' }}
+            />
+          </Col>
+          <Col span={8}>
+            <Statistic title="免领奖项" value={stats?.claim_exempt ?? 0} />
+          </Col>
+        </Row>
       </Card>
 
       <Card
@@ -153,8 +173,37 @@ export default function DashboardPage() {
           locale={{ emptyText: <Empty description="暂无奖项" /> }}
           columns={[
             { title: '奖项名称', dataIndex: 'prize_name' },
-            { title: '奖项数量', dataIndex: 'quantity', width: 120 },
-            { title: '已中奖人数', dataIndex: 'drawn_count', width: 120 },
+            { title: '奖项数量', dataIndex: 'quantity', width: 100 },
+            { title: '已中奖人数', dataIndex: 'drawn_count', width: 110 },
+            {
+              title: '领取方式',
+              dataIndex: 'claim_required',
+              width: 110,
+              render: (v: boolean) =>
+                v ? <Tag color="gold">现场扫码</Tag> : <Tag>免领</Tag>,
+            },
+            {
+              title: '待领取',
+              dataIndex: 'pending_count',
+              width: 90,
+              render: (v: number, r) =>
+                r.claim_required ? (
+                  <Typography.Text type="warning">{v}</Typography.Text>
+                ) : (
+                  '-'
+                ),
+            },
+            {
+              title: '已领取',
+              dataIndex: 'claimed_count',
+              width: 90,
+              render: (v: number, r) =>
+                r.claim_required ? (
+                  <Typography.Text type="success">{v}</Typography.Text>
+                ) : (
+                  '-'
+                ),
+            },
             {
               title: '进度',
               render: (_, record) => (

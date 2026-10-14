@@ -4,6 +4,8 @@ import { asArray, http } from './http'
 import type {
   CheckinEventInfo,
   CheckinResult,
+  ClaimResult,
+  ClaimStats,
   DrawRecord,
   DrawResult,
   EventCreatePayload,
@@ -108,6 +110,40 @@ export const drawApi = {
   reset: (eventId: number, prizeId?: number) =>
     http.delete(`/api/events/${eventId}/draws`, {
       params: prizeId ? { prize_id: prizeId } : {},
+    }),
+  // ---------- 领奖 ----------
+  claimStats: (eventId: number) =>
+    http
+      .get<ClaimStats>(`/api/events/${eventId}/draws/claim-stats`)
+      .then((r) => r.data),
+  claimPreview: (eventId: number, recordId: number, code: string) =>
+    http
+      .get<ClaimResult>(
+        `/api/events/${eventId}/draws/records/${recordId}/claim-preview`,
+        { params: { code } },
+      )
+      .then((r) => r.data),
+  claim: (eventId: number, recordId: number, data: { code: string; phone?: string }) =>
+    http
+      .post<ClaimResult>(`/api/events/${eventId}/draws/records/${recordId}/claim`, data)
+      .then((r) => r.data),
+  revokeClaim: (eventId: number, recordId: number) =>
+    http
+      .delete<DrawRecord>(`/api/events/${eventId}/draws/records/${recordId}/claim`)
+      .then((r) => r.data),
+  /** 主办方手动核销领奖（无需领奖码）。 */
+  manualClaim: (eventId: number, recordId: number, phone?: string) =>
+    http
+      .post<ClaimResult>(
+        `/api/events/${eventId}/draws/records/${recordId}/manual-claim`,
+        { phone: phone ?? null },
+      )
+      .then((r) => r.data),
+  claimQrcodeUrl: (eventId: number, recordId: number) =>
+    `${http.defaults.baseURL ?? ''}/api/events/${eventId}/draws/records/${recordId}/claim-qrcode`,
+  claimQrcode: (eventId: number, recordId: number) =>
+    http.get(`/api/events/${eventId}/draws/records/${recordId}/claim-qrcode`, {
+      responseType: 'blob',
     }),
 }
 

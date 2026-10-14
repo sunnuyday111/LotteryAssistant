@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # 签到二维码指向的前端地址（手机扫码后打开的页面）
     checkin_base_url: str = "http://172.31.20.69:5173/checkin"
 
+    # 领奖二维码指向的前端地址（留空则由 checkin_base_url 推导）
+    claim_base_url: str = ""
+
+    # 领奖码签名密钥（留空则用 app_name 派生，正式环境建议显式配置随机值）
+    claim_secret: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

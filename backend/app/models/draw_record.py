@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -30,6 +30,12 @@ class DrawRecord(Base):
     drawn_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
+
+    # 领奖状态：pending(待领取) / claimed(已领取)
+    claim_status: Mapped[str] = mapped_column(
+        String(20), default="pending", nullable=False, index=True
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # 关系
     event: Mapped["Event"] = relationship(back_populates="draw_records")  # noqa: F821

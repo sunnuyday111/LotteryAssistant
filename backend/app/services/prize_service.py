@@ -33,6 +33,8 @@ def create_prize(db: Session, event_id: int, data: PrizeCreate) -> Prize:
         quantity=data.quantity,
         sort_order=data.sort_order,
         description=data.description,
+        claim_required=data.claim_required,
+        draw_mode=data.draw_mode,
     )
     db.add(prize)
     db.commit()

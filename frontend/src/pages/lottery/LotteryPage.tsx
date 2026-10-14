@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Select, Space, Statistic, Tag, Typography, message } from 'antd'
-import { motion, AnimatePresence } from 'framer-motion'
 import { useParams } from 'react-router-dom'
-import { drawApi, eventApi, prizeApi, statsApi } from '@/api'
+import { drawApi, eventApi, participantApi, prizeApi, statsApi } from '@/api'
 import { buildWsUrl, extractError } from '@/api/http'
+import { PlayRenderer } from '@/components/lottery/PlayModes'
 import type { DrawWinner, EventDetail, EventStats, Prize, WsMessage } from '@/types'
 
 type Phase = 'idle' | 'rolling' | 'result'
@@ -22,6 +22,7 @@ export default function LotteryPage() {
   const [rollingName, setRollingName] = useState('')
   const [winners, setWinners] = useState<DrawWinner[]>([])
   const [connected, setConnected] = useState(false)
+  const [candidateNames, setCandidateNames] = useState<string[]>([])
 
   const wsRef = useRef<WebSocket | null>(null)
   const rollTimerRef = useRef<number | null>(null)
@@ -30,14 +31,17 @@ export default function LotteryPage() {
   const loadBase = useCallback(async () => {
     if (!id) return
     try {
-      const [detail, prizeList, stat] = await Promise.all([
+      const [detail, prizeList, stat, parts] = await Promise.all([
         eventApi.get(id),
         prizeApi.list(id),
         statsApi.get(id),
+        participantApi.list(id),
       ])
       setEvent(detail)
       setPrizes(prizeList)
       setStats(stat)
+      // 滚动动画展示真实候选人姓名（仅已签到者参与抽奖）
+      setCandidateNames(parts.filter((p) => p.checked_in).map((p) => p.name))
       if (prizeList.length > 0 && selectedPrize === null) {
         setSelectedPrize(prizeList[0].id)
       }
@@ -127,8 +131,11 @@ export default function LotteryPage() {
     const prize = prizes.find((p) => p.id === selectedPrize)
     if (!prize) return
 
-    // 先播放滚动动画
-    const pool = Array.from({ length: 30 }, (_, i) => `候选 ${i + 1}`)
+    // 先播放滚动动画（用真实候选人姓名，名单为空时退回占位文案）
+    const pool =
+      candidateNames.length > 0
+        ? candidateNames
+        : Array.from({ length: 30 }, (_, i) => `候选 ${i + 1}`)
     startRolling(pool)
 
     try {
@@ -213,7 +220,7 @@ export default function LotteryPage() {
         {event?.name ?? '抽奖大屏'}
       </Typography.Title>
 
-      {/* 主展示区 */}
+      {/* 主展示区：按奖项配置的玩法渲染 */}
       <div
         style={{
           minHeight: 320,
@@ -223,75 +230,18 @@ export default function LotteryPage() {
           margin: '32px 0',
         }}
       >
-        <AnimatePresence mode="wait">
-          {phase === 'rolling' && (
-            <motion.div
-              key="rolling"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.2 }}
-            >
-              <div className="rolling-name">{rollingName}</div>
-            </motion.div>
-          )}
-
-          {phase === 'result' && (
-            <motion.div
-              key="result"
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 20,
-                justifyContent: 'center',
-                maxWidth: 1200,
-              }}
-            >
-              {winners.map((w, idx) => (
-                <motion.div
-                  key={w.participant_id}
-                  className="winner-card"
-                  initial={{ opacity: 0, scale: 0.5, rotate: -10 }}
-                  animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                  transition={{ delay: idx * 0.15, type: 'spring', stiffness: 200 }}
-                >
-                  <div style={{ fontSize: 40, fontWeight: 900, color: '#fde68a' }}>
-                    {w.name}
-                  </div>
-                  {w.department && (
-                    <div style={{ color: '#c4b5fd', marginTop: 4 }}>
-                      {w.department}
-                    </div>
-                  )}
-                </motion.div>
-              ))}
-            </motion.div>
-          )}
-
-          {phase === 'idle' && (
-            <motion.div
-              key="idle"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              style={{ textAlign: 'center' }}
-            >
-              <Typography.Title level={2} style={{ color: '#a78bfa' }}>
-                {currentPrize
-                  ? `准备抽取「${currentPrize.name}」`
-                  : '请先配置奖项'}
-              </Typography.Title>
-              {currentPrize && (
-                <Typography.Text style={{ color: '#c4b5fd', fontSize: 18 }}>
-                  剩余名额 {currentPrize.quantity - currentPrize.drawn_count} /{' '}
-                  {currentPrize.quantity}
-                </Typography.Text>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <PlayRenderer
+          mode={currentPrize?.draw_mode ?? 'roll'}
+          phase={phase}
+          rollingName={rollingName}
+          winners={winners}
+          prizeName={currentPrize?.name ?? ''}
+          remaining={
+            currentPrize ? currentPrize.quantity - currentPrize.drawn_count : 0
+          }
+          onStart={handleDraw}
+          disabled={phase === 'rolling' || !selectedPrize}
+        />
       </div>
 
       {/* 控制区 */}

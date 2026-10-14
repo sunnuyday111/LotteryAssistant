@@ -9,7 +9,10 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Select,
   Space,
+  Spin,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -30,18 +33,28 @@ import {
 } from '@ant-design/icons'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs from 'dayjs'
-import { eventApi, exportApi, checkinApi, participantApi, prizeApi } from '@/api'
+import { eventApi, exportApi, checkinApi, participantApi, prizeApi, drawApi } from '@/api'
 import { extractError } from '@/api/http'
 import { openLotteryScreen } from '@/utils/openLottery'
 import { isTauri } from '@/utils/isTauri'
 import { invoke } from '@/utils/tauriInvoke'
 import type {
+  ClaimStats,
+  DrawRecord,
   EventDetail,
   Participant,
   ParticipantImportResult,
   Prize,
   PrizePayload,
 } from '@/types'
+
+/** 抽奖玩法中文名。 */
+const DRAW_MODE_LABEL: Record<string, string> = {
+  roll: '滚动名单',
+  wheel: '轮盘转盘',
+  egg: '砸金蛋',
+  grid: '九宫格',
+}
 
 export default function EventDetailPage() {
   const { eventId } = useParams<{ eventId: string }>()
@@ -65,6 +78,16 @@ export default function EventDetailPage() {
   const [editingPrize, setEditingPrize] = useState<Prize | null>(null)
   const [prizeForm] = Form.useForm<PrizePayload>()
 
+  // 中奖记录 / 领奖管理
+  const [records, setRecords] = useState<DrawRecord[]>([])
+  const [claimStats, setClaimStats] = useState<ClaimStats | null>(null)
+  const [claimFilter, setClaimFilter] = useState<
+    'all' | 'pending' | 'claimed' | 'exempt'
+  >('all')
+  const [claimQrOpen, setClaimQrOpen] = useState(false)
+  const [claimQrImage, setClaimQrImage] = useState('')
+  const [claimQrRecord, setClaimQrRecord] = useState<DrawRecord | null>(null)
+
   // 手动添加参与者
   const [addOpen, setAddOpen] = useState(false)
   const [addSubmitting, setAddSubmitting] = useState(false)
@@ -74,14 +97,18 @@ export default function EventDetailPage() {
     if (!id) return
     setLoading(true)
     try {
-      const [detail, parts, prizeList] = await Promise.all([
+      const [detail, parts, prizeList, recs, cStats] = await Promise.all([
         eventApi.get(id),
         participantApi.list(id),
         prizeApi.list(id),
+        drawApi.records(id),
+        drawApi.claimStats(id),
       ])
       setEvent(detail)
       setParticipants(parts)
       setPrizes(prizeList)
+      setRecords(recs)
+      setClaimStats(cStats)
     } catch (err) {
       message.error(extractError(err))
     } finally {
@@ -186,8 +213,17 @@ export default function EventDetailPage() {
             quantity: prize.quantity,
             sort_order: prize.sort_order,
             description: prize.description,
+            draw_mode: prize.draw_mode ?? 'roll',
+            claim_required: prize.claim_required ?? true,
           }
-        : { name: '', quantity: 1, sort_order: prizes.length, description: '' },
+        : {
+            name: '',
+            quantity: 1,
+            sort_order: prizes.length,
+            description: '',
+            draw_mode: 'roll',
+            claim_required: true,
+          },
     )
     setPrizeModalOpen(true)
   }
@@ -227,6 +263,47 @@ export default function EventDetailPage() {
         status === 'finished' ? '已结束活动' :
         status === 'ongoing' ? '已开启活动' : '已重置为草稿',
       )
+      void loadAll()
+    } catch (err) {
+      message.error(extractError(err))
+    }
+  }
+
+  /** 展示某条中奖记录的领奖二维码。 */
+  const showClaimQrcode = async (record: DrawRecord) => {
+    setClaimQrRecord(record)
+    setClaimQrOpen(true)
+    try {
+      const res = await drawApi.claimQrcode(id, record.id)
+      const blob = res.data as Blob
+      const reader = new FileReader()
+      reader.onload = () => setClaimQrImage(String(reader.result))
+      reader.readAsDataURL(blob)
+    } catch (err) {
+      message.error(extractError(err))
+    }
+  }
+
+  /** 主办方手动核销领奖。 */
+  const handleRevokeClaim = async (record: DrawRecord) => {
+    try {
+      await drawApi.revokeClaim(id, record.id)
+      message.success('已撤销领奖，恢复为待领取')
+      void loadAll()
+    } catch (err) {
+      message.error(extractError(err))
+    }
+  }
+
+  /** 主办方手动核销领奖（手机没电 / 二维码丢失时使用）。 */
+  const handleManualClaim = async (record: DrawRecord) => {
+    try {
+      const res = await drawApi.manualClaim(id, record.id)
+      if (res.success) {
+        message.success(res.message)
+      } else {
+        message.warning(res.message)
+      }
       void loadAll()
     } catch (err) {
       message.error(extractError(err))
@@ -276,6 +353,14 @@ export default function EventDetailPage() {
   }
 
   const checkedCount = participants.filter((p) => p.checked_in).length
+
+  /** 中奖记录按领取状态过滤。 */
+  const filteredRecords = records.filter((r) => {
+    if (claimFilter === 'all') return true
+    if (claimFilter === 'exempt') return !r.claim_required
+    if (claimFilter === 'pending') return r.claim_required && r.claim_status === 'pending'
+    return r.claim_required && r.claim_status === 'claimed'
+  })
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -466,17 +551,30 @@ export default function EventDetailPage() {
                     pagination={false}
                     columns={[
                       { title: '奖项名称', dataIndex: 'name' },
-                      { title: '数量', dataIndex: 'quantity', width: 100 },
+                      { title: '数量', dataIndex: 'quantity', width: 80 },
                       {
                         title: '已抽取',
                         dataIndex: 'drawn_count',
-                        width: 100,
+                        width: 90,
                         render: (v: number, r) => `${v} / ${r.quantity}`,
+                      },
+                      {
+                        title: '玩法',
+                        dataIndex: 'draw_mode',
+                        width: 100,
+                        render: (v: string) => DRAW_MODE_LABEL[v] ?? v,
+                      },
+                      {
+                        title: '领奖',
+                        dataIndex: 'claim_required',
+                        width: 90,
+                        render: (v: boolean) =>
+                          v ? <Tag color="gold">需扫码</Tag> : <Tag>免领</Tag>,
                       },
                       {
                         title: '排序',
                         dataIndex: 'sort_order',
-                        width: 80,
+                        width: 70,
                       },
                       {
                         title: '操作',
@@ -497,6 +595,114 @@ export default function EventDetailPage() {
                                 删除
                               </Button>
                             </Popconfirm>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
+                </>
+              ),
+            },
+            {
+              key: 'claims',
+              label: `中奖与领奖 (${records.length})`,
+              children: (
+                <>
+                  <Space style={{ marginBottom: 16 }} wrap>
+                    <Tag color="warning">
+                      待领取 {claimStats?.pending ?? 0}
+                    </Tag>
+                    <Tag color="success">
+                      已领取 {claimStats?.claimed ?? 0}
+                    </Tag>
+                    <Tag>免领 {claimStats?.exempt ?? 0}</Tag>
+                    <Select
+                      style={{ width: 160 }}
+                      value={claimFilter}
+                      onChange={setClaimFilter}
+                      options={[
+                        { value: 'all', label: '全部记录' },
+                        { value: 'pending', label: '仅待领取' },
+                        { value: 'claimed', label: '仅已领取' },
+                        { value: 'exempt', label: '仅免领奖项' },
+                      ]}
+                    />
+                    <Button icon={<DownloadOutlined />} onClick={handleExportDraws}>
+                      导出中奖名单
+                    </Button>
+                  </Space>
+                  <Table<DrawRecord>
+                    rowKey="id"
+                    size="small"
+                    dataSource={filteredRecords}
+                    locale={{ emptyText: <Empty description="暂无中奖记录" /> }}
+                    pagination={{ pageSize: 10, showSizeChanger: true }}
+                    columns={[
+                      { title: '中奖人', dataIndex: 'participant_name' },
+                      { title: '手机号', dataIndex: 'participant_phone' },
+                      { title: '奖项', dataIndex: 'prize_name' },
+                      {
+                        title: '中奖时间',
+                        dataIndex: 'drawn_at',
+                        render: (v: string) =>
+                          dayjs(v).format('YYYY-MM-DD HH:mm:ss'),
+                      },
+                      {
+                        title: '领取状态',
+                        dataIndex: 'claim_status',
+                        width: 140,
+                        render: (v: string, r) =>
+                          !r.claim_required ? (
+                            <Tag>免领</Tag>
+                          ) : v === 'claimed' ? (
+                            <Tag color="success">
+                              已领取
+                              {r.claimed_at
+                                ? ` · ${dayjs(r.claimed_at).format('HH:mm')}`
+                                : ''}
+                            </Tag>
+                          ) : (
+                            <Tag color="warning">待领取</Tag>
+                          ),
+                      },
+                      {
+                        title: '操作',
+                        width: 280,
+                        render: (_, record) => (
+                          <Space>
+                            {record.claim_required &&
+                              record.claim_status === 'pending' && (
+                                <>
+                                  <Button
+                                    size="small"
+                                    type="link"
+                                    onClick={() => void showClaimQrcode(record)}
+                                  >
+                                    领奖二维码
+                                  </Button>
+                                  <Popconfirm
+                                    title="确认手动核销领奖？"
+                                    description="用于中奖人手机没电或二维码丢失的情况"
+                                    onConfirm={() => handleManualClaim(record)}
+                                  >
+                                    <Button size="small" type="link">
+                                      手动核销
+                                    </Button>
+                                  </Popconfirm>
+                                </>
+                              )}
+                            {record.claim_required &&
+                              record.claim_status === 'claimed' && (
+                                <Popconfirm
+                                  title="确认撤销领奖？"
+                                  description="将恢复为待领取状态"
+                                  onConfirm={() => handleRevokeClaim(record)}
+                                >
+                                  <Button size="small" danger>
+                                    撤销领奖
+                                  </Button>
+                                </Popconfirm>
+                              )}
                           </Space>
                         ),
                       },
@@ -528,6 +734,47 @@ export default function EventDetailPage() {
           </Typography.Paragraph>
           <Typography.Text type="secondary">
             参与者用手机扫码即可签到
+          </Typography.Text>
+        </div>
+      </Modal>
+
+      {/* 领奖二维码弹窗 */}
+      <Modal
+        title="领奖二维码"
+        open={claimQrOpen}
+        footer={null}
+        onCancel={() => setClaimQrOpen(false)}
+        width={420}
+      >
+        <div style={{ textAlign: 'center' }}>
+          {claimQrRecord && (
+            <Typography.Paragraph style={{ marginBottom: 12 }}>
+              <Typography.Text strong>
+                {claimQrRecord.participant_name}
+              </Typography.Text>
+              {' · '}
+              {claimQrRecord.prize_name}
+            </Typography.Paragraph>
+          )}
+          {claimQrImage ? (
+            <img
+              src={claimQrImage}
+              alt="领奖二维码"
+              style={{ width: 280, height: 280 }}
+            />
+          ) : (
+            <Spin />
+          )}
+          {claimQrRecord?.claim_url && (
+            <Typography.Paragraph
+              copyable={{ text: claimQrRecord.claim_url }}
+              style={{ marginTop: 12 }}
+            >
+              {claimQrRecord.claim_url}
+            </Typography.Paragraph>
+          )}
+          <Typography.Text type="secondary">
+            中奖人用手机扫码即可核销领奖
           </Typography.Text>
         </div>
       </Modal>
@@ -598,6 +845,28 @@ export default function EventDetailPage() {
           </Form.Item>
           <Form.Item name="description" label="奖品描述">
             <Input placeholder="例如：iPhone 16 Pro" maxLength={255} />
+          </Form.Item>
+          <Form.Item
+            name="draw_mode"
+            label="抽奖玩法"
+            extra="决定抽奖大屏使用哪种动画呈现"
+          >
+            <Select
+              options={[
+                { value: 'roll', label: '滚动名单（默认）' },
+                { value: 'wheel', label: '轮盘转盘' },
+                { value: 'egg', label: '砸金蛋' },
+                { value: 'grid', label: '九宫格抽奖' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="claim_required"
+            label="需要现场扫码领奖"
+            valuePropName="checked"
+            extra="关闭后中奖即视为已领取，不生成领奖二维码"
+          >
+            <Switch checkedChildren="需要" unCheckedChildren="不需要" />
           </Form.Item>
         </Form>
       </Modal>

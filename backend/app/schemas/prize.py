@@ -12,6 +12,12 @@ class PrizeBase(BaseModel):
     quantity: int = Field(1, ge=1, description="奖项数量")
     sort_order: int = Field(0, description="排序权重")
     description: str | None = Field(None, max_length=255, description="奖品描述")
+    # 是否需要现场扫码领奖
+    claim_required: bool = Field(True, description="是否需要现场扫码领奖")
+    # 抽奖玩法：roll(滚动名单) / wheel(轮盘) / egg(砸金蛋) / grid(九宫格)
+    draw_mode: str = Field(
+        "roll", pattern="^(roll|wheel|egg|grid)$", description="抽奖玩法"
+    )
 
 
 class PrizeCreate(PrizeBase):
@@ -25,6 +31,8 @@ class PrizeUpdate(BaseModel):
     quantity: int | None = Field(None, ge=1)
     sort_order: int | None = None
     description: str | None = Field(None, max_length=255)
+    claim_required: bool | None = None
+    draw_mode: str | None = Field(None, pattern="^(roll|wheel|egg|grid)$")
 
 
 class PrizeOut(PrizeBase):

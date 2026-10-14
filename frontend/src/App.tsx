@@ -4,6 +4,7 @@ import EventListPage from './pages/events/EventListPage'
 import EventDetailPage from './pages/events/EventDetailPage'
 import CheckinPage from './pages/checkin/CheckinPage'
 import LotteryPage from './pages/lottery/LotteryPage'
+import ClaimPage from './pages/claim/ClaimPage'
 import DashboardPage from './pages/dashboard/DashboardPage'
 
 export default function App() {
@@ -15,6 +16,9 @@ export default function App() {
 
         {/* 抽奖大屏（全屏） */}
         <Route path="/lottery/:eventId" element={<LotteryPage />} />
+
+        {/* 扫码领奖（无需后台布局） */}
+        <Route path="/claim/:eventId/:recordId/:code" element={<ClaimPage />} />
 
         {/* 管理后台 */}
         <Route path="/" element={<AdminLayout />}>

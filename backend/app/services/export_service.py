@@ -52,7 +52,7 @@ def export_checkin_list(db: Session, event: Event) -> bytes:
 def export_draw_list(db: Session, event: Event) -> bytes:
     """导出中奖名单 Excel。
 
-    列：奖项、姓名、手机号、部门、中奖时间。
+    列：奖项、姓名、手机号、部门、中奖时间、领取状态、领取时间。
     """
 
     records = list(
@@ -64,7 +64,7 @@ def export_draw_list(db: Session, event: Event) -> bytes:
     )
 
     prize_map = {
-        p.id: p.name
+        p.id: p
         for p in db.scalars(select(Prize).where(Prize.event_id == event.id)).all()
     }
     participant_map = {
@@ -77,17 +77,33 @@ def export_draw_list(db: Session, event: Event) -> bytes:
     rows = []
     for r in records:
         p = participant_map.get(r.participant_id)
+        prize = prize_map.get(r.prize_id)
+        if prize is not None and not prize.claim_required:
+            claim_status = "无需领奖"
+        elif r.claim_status == "claimed":
+            claim_status = "已领取"
+        else:
+            claim_status = "待领取"
+        # 免领奖项不记录领取时间（中奖即终态）
+        claimed_at = r.claimed_at if prize is None or prize.claim_required else None
         rows.append(
             {
-                "奖项": prize_map.get(r.prize_id, ""),
+                "奖项": prize.name if prize else "",
                 "姓名": p.name if p else "",
                 "手机号": p.phone if p else "",
                 "部门": (p.department or "") if p else "",
                 "中奖时间": r.drawn_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "领取状态": claim_status,
+                "领取时间": claimed_at.strftime("%Y-%m-%d %H:%M:%S")
+                if claimed_at
+                else "",
             }
         )
 
-    df = pd.DataFrame(rows, columns=["奖项", "姓名", "手机号", "部门", "中奖时间"])
+    df = pd.DataFrame(
+        rows,
+        columns=["奖项", "姓名", "手机号", "部门", "中奖时间", "领取状态", "领取时间"],
+    )
     return _to_excel_bytes(df, "中奖名单")
 
 

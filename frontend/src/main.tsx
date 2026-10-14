@@ -8,18 +8,22 @@ import './styles/global.css'
 
 dayjs.locale('zh-cn')
 
-// 把形如 /checkin/<token> 的 URL 转换为 HashRouter 所需的 #/checkin/<token>
-// 后端 SPA fallback 会把任意路径都返回 index.html，需要在前端把 path 转 hash
+// 把形如 /checkin/<token>、/claim/<eventId>/<recordId>/<code> 的 URL
+// 转换为 HashRouter 所需的 #/... 形式。
+// 后端 SPA fallback 会把任意路径都返回 index.html，需要在前端把 path 转 hash。
 ;(function rewritePathToHash() {
   const { pathname, hash, search } = window.location
   if (hash) return // 已经有 hash 不动
-  // 仅处理签到/抽奖路径
-  const m = pathname.match(/^\/(checkin|lottery|events)(?:\/([^/]+))?/)
-  if (!m) return
-  const seg = m[1]
-  const id = m[2]
-  const hashPath = id ? `/${seg}/${id}` : `/${seg}`
-  window.location.replace(`${window.location.pathname}#${hashPath}${search ?? ''}`)
+
+  // 需要转换的应用路由前缀（必须完整保留后续所有路径段，
+  // 例如 /claim/1/2/c6af43c6 不能截断成 /claim/1）
+  const ROUTE_PREFIXES = ['/checkin', '/lottery', '/claim', '/events']
+  const isAppRoute = ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  )
+  if (!isAppRoute) return
+
+  window.location.replace(`${pathname}#${pathname}${search ?? ''}`)
 })()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
