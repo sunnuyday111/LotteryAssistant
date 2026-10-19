@@ -137,6 +137,12 @@ jobs:
         run: npm ci
         working-directory: desktop
 
+      # 版本号取自 git tag（上面已 fetch-depth: 0），
+      # 保证安装包文件名里的版本与触发的标签一致
+      - name: 同步版本号
+        run: npm run sync:version
+        working-directory: desktop
+
       # Tauri 在 Windows 需要 MSVC 工具链与 WebView2
       - uses: dtolnay/rust-toolchain@stable
         with:

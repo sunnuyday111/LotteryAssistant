@@ -134,13 +134,52 @@ npm run dev
 
 ### 3. 使用流程
 
-1. 在「活动管理」中新建活动
-2. 进入活动详情，导入参与者名单（Excel/CSV）或手动添加
-3. 在「奖项配置」中新增奖项，设置数量、**抽奖玩法**、**是否需要现场扫码领奖**
-4. 点击「签到二维码」，让参与者扫码签到
-5. 点击「打开抽奖大屏」，选择奖项开始抽奖（动画按奖项配置的玩法呈现）
-6. 中奖者扫码领奖；主办方在「中奖与领奖」中查看状态、手动核销或撤销
-7. 在「数据看板」查看统计并导出数据
+1. 启动后端后，**在控制台复制管理口令**（见 [访问控制](#访问控制)）
+2. 打开后台会先进入解锁页，粘贴口令解锁
+3. 在「活动管理」中新建活动
+4. 进入活动详情，导入参与者名单（Excel/CSV）或手动添加
+5. 在「奖项配置」中新增奖项，设置数量、**抽奖玩法**、**是否需要现场扫码领奖**
+6. 点击「签到二维码」，让参与者扫码签到（签到页无需口令）
+7. 点击「打开抽奖大屏」，选择奖项开始抽奖（动画按奖项配置的玩法呈现）
+8. 中奖者扫码领奖；主办方在「中奖与领奖」中查看状态、手动核销或撤销
+9. 在「数据看板」查看统计并导出数据
+
+## 访问控制
+
+后端采用**默认拒绝**：除下表中的公开路径外，所有 `/api/` 接口与 `/ws/` 实时通道
+都必须携带管理口令。目的是保护管理侧能力不被同局域网内的其他人调用——
+桌面端与 Docker 部署都会监听 `0.0.0.0` 以便手机扫码，等于把 API 暴露给了整个内网。
+
+### 公开路径（参与者 / 中奖者扫码即用，无需口令）
+
+| 方法 | 路径 | 用途 |
+| ---- | ---- | ---- |
+| GET | `/api/health` | 健康检查（桌面端拉起后探测后端就绪） |
+| GET | `/api/checkin/{token}` | 扫码后查看活动信息 |
+| POST | `/api/checkin/{token}` | 提交签到 |
+| GET | `/api/events/{id}/draws/records/{rid}/claim-preview` | 中奖者预览领奖凭证 |
+| POST | `/api/events/{id}/draws/records/{rid}/claim` | 中奖者扫码核销领奖 |
+
+白名单集中在 [backend/app/api/security.py](backend/app/api/security.py) 的
+`PUBLIC_API_ROUTES`，需要放开其他路径时改这一处即可。
+
+### 管理口令
+
+口令通过请求头 `X-Admin-Token` 传递；WebSocket 无法自定义请求头，改用
+`?token=` 查询参数。大屏页面会自动带上，无需手工处理。
+
+- **已配置 `ADMIN_TOKEN`**：使用该值，进程重启后不变
+- **未配置**：启动时自动生成一个随机口令并打印到控制台，仅存于内存，**进程重启后失效**
+
+桌面端拉起后端时会弹出一个黑色控制台窗口，口令就打印在那里。
+前端把口令存在 `localStorage`，解锁一次后整个浏览器会话（含系统浏览器打开的
+抽奖大屏）都能复用；收到 401 会自动清空并切回解锁页。
+
+> `checkin_token` 与管理口令是两回事：前者印在二维码里，用于定位活动；
+> 后者保护管理接口。二者互不替代。
+
+> 长期运行的服务（Docker、服务器）建议显式配置 `ADMIN_TOKEN`，
+> 否则每次重启口令都会变。
 
 ## 名单文件格式
 
@@ -207,6 +246,10 @@ docker compose up -d --build
 
 > 部署到局域网时，需把 `CHECKIN_BASE_URL` 改为手机可访问的地址，
 > 否则签到/领奖二维码会指向 `localhost` 导致手机扫码打不开。
+>
+> 管理后台需要口令（见 [访问控制](#访问控制)）。未在宿主环境设置 `ADMIN_TOKEN` 时，
+> 后端每次重启都会随机生成一个，用 `docker compose logs backend` 查看；
+> 需要固定口令时在项目根目录建 `.env` 写入 `ADMIN_TOKEN=...` 即可。
 
 ## Windows 桌面端打包
 
@@ -271,11 +314,16 @@ desktop/src-tauri/target/release/bundle/
   可用 `LOTTERY_PUBLIC_HOST` 或 `CHECKIN_BASE_URL` 强制覆盖
 - 桌面端启动时自动拉起后端进程，退出时自动关闭
 
+> **管理口令**：后端进程会弹出一个黑色控制台窗口，启动横幅里打印着本次运行
+> 生成的管理口令。首次打开后台时在解锁页输入即可；口令每次启动都会重新生成
+> （除非配置了 `ADMIN_TOKEN`）。参与者扫码进入的签到页与领奖页不受影响，无需口令。
+
 ### 常用命令
 
 | 命令 | 说明 |
 |------|------|
 | `npm run dev` | 开发模式（热重载，需手动启动后端） |
+| `npm run sync:version` | 把各处版本号同步为最新 git tag（构建前会自动执行） |
 | `npm run build:sidecar` | 仅打包后端 sidecar |
 | `npm run build:all` | 打包 sidecar + 桌面端安装包 |
 | `npm run build` | 仅打包桌面端（需先有 sidecar） |
@@ -291,7 +339,8 @@ npm run tauri icon path/to/logo.png
 ```
 
 > 说明：开发模式（`npm run dev`）下后端不会自动拉起，需手动执行
-> `cd backend && .venv/Scripts/python.exe -m uvicorn app.main:app --port 8000`。
+> `cd backend && .venv/Scripts/python.exe -m uvicorn app.main:app --port 8000`，
+> 并从该终端的控制台复制管理口令。
 >
 > 桌面端 WebView 使用 `tauri://` 协议，无法直接加载 `blob:` 下载与 `<img src="/api/...">`，
 > 因此导出文件走 Rust 端 `save_download` 落盘，二维码改为 axios 取 PNG 后转 `data:` URL 内嵌。
@@ -309,19 +358,29 @@ npm run tauri icon path/to/logo.png
 
 ### 发布新版本
 
+版本号无需手工维护：构建前会自动执行 `npm run sync:version`，把
+`tauri.conf.json`、`Cargo.toml`、`Cargo.lock` 与两个 `package.json` 统一改成
+**当前 HEAD 可达的最新 git tag**（去掉前缀 `v`）。CI 发布流水线同样会执行这一步，
+所以安装包文件名里的版本始终与触发的标签一致。
+
 ```bash
 git add .
-git commit -m "chore: release v0.1.0"
-git tag v0.1.0
+git commit -m "chore: release v0.1.3"
+git tag v0.1.3
 git push origin main --tags
 ```
+
+> 脚本优先级为 `RELEASE_VERSION` 环境变量 > `git describe --tags --abbrev=0` > 保持现值并告警。
+> 需要打一个与 tag 不同的版本（例如 nightly）时，设 `RELEASE_VERSION=0.1.3-beta.1` 即可。
+> 校验而不改写用 `npm run sync:version -- --check`，不一致时以退出码 1 结束。
 
 流水线会自动完成：
 
 1. `npm ci && npm run build`（前端）
 2. `pip install -r requirements.txt pyinstaller` → `python build_sidecar.py`（后端单文件）
-3. `cargo tauri build`（把 sidecar 嵌入主 EXE 并生成 NSIS 安装包）
-4. 创建 GitHub Release 并附带 `release/` 下的 `*.exe` / `*.msi`
+3. `npm run sync:version`（版本号对齐 git tag）
+4. `cargo tauri build`（把 sidecar 嵌入主 EXE 并生成 NSIS 安装包）
+5. 创建 GitHub Release 并附带 `release/` 下的 `*.exe` / `*.msi`
 
 ### 手动触发发布
 
@@ -374,6 +433,7 @@ cd frontend && npm run build
 | `CHECKIN_BASE_URL` | 签到页地址前缀（二维码指向） | `http://172.31.20.69:5173/checkin` |
 | `CLAIM_BASE_URL` | 领奖页地址前缀（留空则由 `CHECKIN_BASE_URL` 推导） | 空 |
 | `CLAIM_SECRET` | 领奖码签名密钥（留空则用 `app_name` 派生） | 空 |
+| `ADMIN_TOKEN` | 管理后台口令（留空则启动时随机生成并打印到控制台） | 空 |
 | `CORS_ORIGINS` | 允许的跨域来源 | 见 `config.py` |
 
 桌面端 sidecar 额外支持：

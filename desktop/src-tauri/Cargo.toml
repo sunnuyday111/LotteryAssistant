@@ -1,6 +1,6 @@
 [package]
 name = "lottery-assistant"
-version = "0.1.0"
+version = "0.1.3"
 description = "活动签到抽奖助手桌面端"
 authors = ["you"]
 edition = "2021"

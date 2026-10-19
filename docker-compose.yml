@@ -5,6 +5,10 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./data/lottery.db
       - CHECKIN_BASE_URL=http://localhost/checkin
+      # 管理后台口令：留空则后端启动时随机生成，用
+      # `docker compose logs backend` 查看（每次重启都会变）。
+      # 需要固定口令时，在宿主机的 .env 或环境变量里设置 ADMIN_TOKEN。
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
     volumes:
       - ./backend/data:/app/data
     ports:

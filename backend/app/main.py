@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from .api import checkins, draws, events, exports, participants, prizes, stats, ws
+from .api import checkins, draws, events, exports, participants, prizes, security, stats, ws
 from .config import settings
 from .database import get_db, init_db
 from .models import Event
@@ -41,6 +41,9 @@ async def lifespan(app: FastAPI):
     """应用生命周期：启动时初始化数据库。"""
 
     init_db()
+    # 提前生成管理口令：未配置 ADMIN_TOKEN 时会在控制台打印，
+    # 否则要等到第一个受保护请求才会提示，主办方难以发现。
+    security.get_admin_token()
     yield
 
 
@@ -50,6 +53,11 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# 管理后台访问控制（默认拒绝 + 公开路径白名单）。
+# 必须先于 CORS 注册：CORS 作为最外层中间件，才能给 401 响应补上跨域响应头，
+# 否则浏览器拿不到错误信息，只会报网络错误。
+app.add_middleware(security.AdminAuthMiddleware)
 
 # 跨域配置
 app.add_middleware(

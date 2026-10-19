@@ -58,3 +58,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# 本地沙箱 / 文件权限诊断产物
+.acl-recovery/

@@ -1,14 +1,15 @@
 {
   "name": "event-lottery-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.3",
   "type": "module",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build",
+    "sync:version": "node scripts/sync-version.mjs",
+    "build": "npm run sync:version && tauri build",
     "build:sidecar": "cd ../backend && .venv\\Scripts\\python.exe build_sidecar.py",
-    "build:all": "npm run build:sidecar && tauri build"
+    "build:all": "npm run build:sidecar && npm run build"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0"

@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # 领奖码签名密钥（留空则用 app_name 派生，正式环境建议显式配置随机值）
     claim_secret: str = ""
 
+    # 管理后台口令：保护 /api/ 下的管理接口与 /ws/ 实时通道。
+    # 留空则启动时自动生成一个随机口令并打印到控制台（仅存于内存，进程重启后失效）。
+    admin_token: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

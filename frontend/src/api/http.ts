@@ -2,9 +2,13 @@
 
 import axios, { type AxiosRequestConfig } from 'axios'
 import { isTauri } from '@/utils/isTauri'
+import { clearAdminToken, getAdminToken } from './adminAuth'
 
 /** 扩展请求配置，附加重试计数器。 */
 type RetryableConfig = AxiosRequestConfig & { __retryCount?: number }
+
+/** 与后端 security.ADMIN_TOKEN_HEADER 保持一致。 */
+export const ADMIN_TOKEN_HEADER = 'X-Admin-Token'
 
 /** 后端 API 基础地址：
  *  - 显式 VITE_API_BASE_URL 优先
@@ -21,10 +25,17 @@ export const http = axios.create({
   timeout: 30000,
 })
 
-/** 为每个请求初始化重试计数器。 */
+/** 为每个请求初始化重试计数器，并按需附加管理口令。 */
 http.interceptors.request.use((config) => {
   if (config && (config as { __retryCount?: number }).__retryCount === undefined) {
     ;(config as { __retryCount?: number }).__retryCount = 0
+  }
+  // 已解锁才带口令：未解锁时保持请求「干净」，401 才能被识别为需要解锁，
+  // 而不是被误判成别的错误。
+  const token = getAdminToken()
+  if (token) {
+    config.headers = config.headers ?? {}
+    config.headers[ADMIN_TOKEN_HEADER] = token
   }
   return config
 })
@@ -39,6 +50,12 @@ http.interceptors.response.use(
     return Promise.reject(new Error(`HTTP ${response.status}`))
   },
   async (error) => {
+    // 口令失效（被改过、服务重启后自动生成的口令变了）时清空本地口令，
+    // 订阅者会据此把界面切回解锁页。
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      clearAdminToken()
+      return Promise.reject(error)
+    }
     if (!isTauri()) return Promise.reject(error)
     const config = error.config as RetryableConfig | undefined
     if (!config || config.__retryCount === undefined) return Promise.reject(error)
@@ -73,13 +90,17 @@ export function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : []
 }
 
-/** 构造 WebSocket 地址。 */
+/** 构造 WebSocket 地址。
+ *
+ *  大屏的实时通道同样需要管理口令，而浏览器无法为 WebSocket 自定义请求头，
+ *  因此按后端 security.ADMIN_TOKEN_QUERY 的约定走查询参数。 */
 export function buildWsUrl(eventId: number): string {
-  if (API_BASE_URL) {
-    const url = new URL(API_BASE_URL, window.location.origin)
-    const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${protocol}//${url.host}/ws/events/${eventId}`
-  }
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws/events/${eventId}`
+  // 有 API_BASE_URL 时以其协议为准（Tauri 下窗口协议是 tauri:，但后端仍是 http），
+  // 同源部署才退回 window.location。
+  const base = API_BASE_URL ? new URL(API_BASE_URL, window.location.origin) : null
+  const protocol = (base?.protocol ?? window.location.protocol) === 'https:' ? 'wss:' : 'ws:'
+  const host = base?.host ?? window.location.host
+  const url = `${protocol}//${host}/ws/events/${eventId}`
+  const token = getAdminToken()
+  return token ? `${url}?token=${encodeURIComponent(token)}` : url
 }
